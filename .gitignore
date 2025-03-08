@@ -18,14 +18,14 @@
 *.MOV
 *.avi
 *.data
-*.json
+# *.json
 *.cfg
 !setup.cfg
 !cfg/yolov3*.cfg
 
 storage.googleapis.com
 runs/*
-data/*
+# data/*
 data/images/*
 !data/*.yaml
 !data/hyps
