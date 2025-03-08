@@ -1,0 +1,5 @@
+train: data/SkyFusion/train/images
+val: data/SkyFusion/valid/images
+
+nc: 3
+names: ["Aircraft", "ship", "vehicle"]
