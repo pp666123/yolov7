@@ -2055,3 +2055,61 @@ class ST2CSPC(nn.Module):
         return self.cv4(torch.cat((y1, y2), dim=1))
 
 ##### end of swin transformer v2 #####   
+
+
+## add CA
+class h_sigmoid(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_sigmoid, self).__init__()
+        self.relu = nn.ReLU6(inplace=inplace)
+
+    def forward(self, x):
+        return self.relu(x + 3) / 6
+
+class h_swish(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_swish, self).__init__()
+        self.sigmoid = h_sigmoid(inplace=inplace)
+
+    def forward(self, x):
+        return x * self.sigmoid(x)
+
+class CoordAtt(nn.Module):
+    def __init__(self, inp, oup, reduction=32):
+        super(CoordAtt, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))  # 高度方向池化
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))  # 寬度方向池化
+
+        mip = max(8, inp // reduction)  # 中間通道數
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+
+        self.conv_h = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        identity = x
+        n, c, h, w = x.size()
+
+        # 高度和寬度方向的池化
+        x_h = self.pool_h(x)  # [N, C, H, 1]
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)  # [N, C, W, 1] -> [N, C, 1, W]
+
+        # 拼接並進行卷積
+        y = torch.cat([x_h, x_w], dim=2)  # [N, C, H+W, 1]
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+
+        # 分割成高度和寬度注意力
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)  # 恢復寬度方向
+
+        # 生成注意力權重
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        # 應用注意力
+        out = identity * a_h * a_w
+        return out
