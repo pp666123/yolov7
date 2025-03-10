@@ -73,7 +73,7 @@ backbone:
 
 # yolov7 head
 head: [
-    [-1, 1, SPPCSPC, [512]], #51  # Updated to use SPPFCSPC
+    [-1, 1, SPPFCSPC, [512]], #51  # Updated to use SPPFCSPC
 
     [-1, 1, Conv, [256, 1, 1]],
     [-1, 1, nn.Upsample, [None, 2, "nearest"]],
@@ -156,6 +156,8 @@ head: [
     [87, 1, RepConv, [128, 3, 1]],
     [100, 1, RepConv, [256, 3, 1]],
     [113, 1, RepConv, [512, 3, 1]],
+    [114, 1, CoordAtt, [512, 512]],  # CA layer with 512 input and output channels
 
-    [[114, 115, 116], 1, IDetect, [nc, anchors]], # Detect(P2, P3, P4)
+
+    [[115, 116, 117], 1, IDetect, [nc, anchors]], # Detect(P2, P3, P4)
   ]
