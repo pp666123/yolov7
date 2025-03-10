@@ -156,8 +156,8 @@ head: [
     [87, 1, RepConv, [128, 3, 1]],
     [100, 1, RepConv, [256, 3, 1]],
     [113, 1, RepConv, [512, 3, 1]],
-    [114, 1, CoordAtt, [512, 512]],  # CA layer with 512 input and output channels
+    # [114, 1, CoordAtt, [128, 512]],  # CA layer with 512 input and output channels
 
 
-    [[115, 116, 117], 1, IDetect, [nc, anchors]], # Detect(P2, P3, P4)
+    [[114, 115, 116], 1, IDetect, [nc, anchors]], # Detect(P2, P3, P4)
   ]

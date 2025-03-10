@@ -287,7 +287,7 @@ class h_sigmoid(nn.Module):
 
     def forward(self, x):
         return self.relu(x + 3) / 6
-        
+
 class h_swish(nn.Module):
     def __init__(self, inplace=True):
         super(h_swish, self).__init__()
@@ -550,6 +550,8 @@ class RepConv(nn.Module):
 
     def forward(self, inputs):
         if hasattr(self, "rbr_reparam"):
+            out = self.rbr_reparam(inputs)
+            print(f"Output shape (deploy mode): {out.shape}")
             return self.act(self.rbr_reparam(inputs))
 
         if self.rbr_identity is None:
