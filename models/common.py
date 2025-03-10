@@ -280,6 +280,14 @@ class SPPCSPC(nn.Module):
         return self.cv7(torch.cat((y1, y2), dim=1))
 
 ## add
+class h_sigmoid(nn.Module):
+    def __init__(self, inplace=True):
+        super(h_sigmoid, self).__init__()
+        self.relu = nn.ReLU6(inplace=inplace)
+
+    def forward(self, x):
+        return self.relu(x + 3) / 6
+        
 class h_swish(nn.Module):
     def __init__(self, inplace=True):
         super(h_swish, self).__init__()
@@ -287,7 +295,7 @@ class h_swish(nn.Module):
 
     def forward(self, x):
         return x * self.sigmoid(x)
-        
+
 class CoordAtt(nn.Module):
     def __init__(self, inp, oup, groups=32):
         super(CoordAtt, self).__init__()
