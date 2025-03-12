@@ -165,5 +165,6 @@ head: [
     [-1, 1, CA, [512, 512]],         # 层 119: P4 的 CA
     
 
+    # [[108, 109, 110], 1, IDetect, [nc, anchors]], # Detect(P3, P4, P5)
     [[115, 117, 119], 1, IDetect, [nc, anchors]], # Detect(P2, P3, P4)
   ]
