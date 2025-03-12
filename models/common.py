@@ -2055,3 +2055,50 @@ class ST2CSPC(nn.Module):
         return self.cv4(torch.cat((y1, y2), dim=1))
 
 ##### end of swin transformer v2 #####   
+
+
+
+### add CA
+class CoordinateAttention(nn.Module):
+    def __init__(self, in_channels, out_channels, reduction=32):
+        super(CoordinateAttention, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))  # 水平池化
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))  # 垂直池化
+        mid_channels = max(8, in_channels // reduction)
+        
+        self.conv1 = nn.Conv2d(in_channels, mid_channels, kernel_size=1, stride=1, padding=0)
+        self.bn = nn.BatchNorm2d(mid_channels)
+        self.act = nn.ReLU(inplace=True)
+        
+        self.conv_h = nn.Conv2d(mid_channels, out_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mid_channels, out_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        identity = x
+        n, c, h, w = x.size()
+        
+        # 水平和垂直方向池化
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)  # 转置以对齐维度
+        
+        # 拼接并通过卷积
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn(y)
+        y = self.act(y)
+        
+        # 分离水平和垂直注意力
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+        
+        # 生成注意力权重
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+        
+        # 应用注意力
+        out = identity * a_w * a_h
+        return out
+
+# 注册模块以便在 .yaml 中调用
+def CA(*args, **kwargs):
+    return CoordinateAttention(*args, **kwargs)
