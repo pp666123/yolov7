@@ -281,40 +281,22 @@ class SPPCSPC(nn.Module):
 
 ## add
 class SPPFCSPC(nn.Module):
-    # CSP + Feature Fusion SPP (SPPFCSPC)
-    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, k=(5, 9, 13)):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, k=5):
         super(SPPFCSPC, self).__init__()
         c_ = int(2 * c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
-        self.cv3 = Conv(c_, c_, 3, 1)
-        self.cv4 = Conv(c_, c_, 1, 1)
-        self.m = nn.ModuleList([nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k])
-        
-        # Feature Fusion part: Adding an additional fusion step for improved performance
-        self.cv5 = Conv(4 * c_, c_, 1, 1)  # After pooling and concatenation, we use this layer
-        self.cv6 = Conv(c_, c_, 3, 1)
-        
-        # The final convolution layer to match the desired output channels
-        self.cv7 = Conv(2 * c_, c2, 1, 1)
+        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.cv3 = Conv(c_ * 4, c2, 1, 1)  # SPPF 用 3 次池化 + 原特征，通道数为 4*c_
 
-        # Additional convolution for feature fusion
-        self.cv8 = Conv(4 * c_, c_, 1, 1)  # Fusion of all features before final output
-    
     def forward(self, x):
-        # Process through convolutions and pooling
-        x1 = self.cv4(self.cv3(self.cv1(x)))  # First convolution path
-        
-        # Pooling and feature fusion
-        pooled_features = torch.cat([x1] + [m(x1) for m in self.m], 1)
-        y1 = self.cv6(self.cv5(pooled_features))
-        
-        # The additional fusion layer for better feature integration
-        y1_fused = self.cv8(torch.cat([x1, y1], 1))  # Fusion of original and pooled features
-        
-        # Final fusion and output
-        y2 = self.cv2(x)  # Skip connection from input
-        return self.cv7(torch.cat((y1_fused, y2), dim=1))  # Combine and output
+        x1 = self.cv1(x)
+        x2 = self.cv2(x)
+        y1 = x1
+        y2 = self.m(y1)
+        y3 = self.m(y2)
+        y4 = self.m(y3)
+        return self.cv3(torch.cat([y1, y2, y3, y4], dim=1)) + x2
 
         
 class GhostSPPCSPC(SPPCSPC):
