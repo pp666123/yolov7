@@ -2055,3 +2055,40 @@ class ST2CSPC(nn.Module):
         return self.cv4(torch.cat((y1, y2), dim=1))
 
 ##### end of swin transformer v2 #####   
+
+
+class BiFPN(nn.Module):
+    def __init__(self, in_channels_list, out_channels):
+        super(BiFPN, self).__init__()
+        self.out_channels = out_channels
+        self.conv_list = nn.ModuleList()
+        self.weights = nn.ParameterList()
+
+        # 為每個輸入層創建卷積層
+        for i, c in enumerate(in_channels_list):
+            self.conv_list.append(Conv(c, out_channels, 1, 1))
+            # 每個輸入分配一個可學習權重
+            self.weights.append(nn.Parameter(torch.ones(2 if i > 0 else 1, dtype=torch.float32)))
+
+        # 自底向上的額外卷積
+        self.conv_up = nn.ModuleList([Conv(out_channels, out_channels, 3, 1) for _ in range(len(in_channels_list) - 1)])
+
+    def forward(self, inputs):
+        # 輸入：P5, P4, P3, P2 (從深到淺)
+        P = [conv(x) for conv, x in zip(self.conv_list, inputs)]
+
+        # 自頂向下融合
+        P_td = [P[-1]]  # P2
+        for i in range(len(P) - 2, -1, -1):  # P3, P4, P5
+            w = F.softmax(self.weights[i], dim=0)
+            up = F.interpolate(P_td[0], scale_factor=2, mode='nearest')
+            P_td.insert(0, w[0] * P[i] + w[1] * up)
+
+        # 自底向上融合
+        P_bu = [P_td[-1]]  # P5
+        for i in range(len(P_td) - 1):  # P4, P3, P2
+            w = F.softmax(self.weights[i + 1], dim=0)
+            down = self.conv_up[i](F.max_pool2d(P_bu[0], kernel_size=3, stride=2, padding=1))
+            P_bu.insert(0, w[0] * P_td[i] + w[1] * down)
+
+        return P_bu[::-1]  # 返回 P2, P3, P4, P5
