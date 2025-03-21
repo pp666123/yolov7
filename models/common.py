@@ -281,40 +281,22 @@ class SPPCSPC(nn.Module):
 
 ## add
 class SPPFCSPC(nn.Module):
-    # CSP + Feature Fusion SPP (SPPFCSPC)
-    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, k=(5, 9, 13)):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, k=5):
         super(SPPFCSPC, self).__init__()
         c_ = int(2 * c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c1, c_, 1, 1)
-        self.cv3 = Conv(c_, c_, 3, 1)
-        self.cv4 = Conv(c_, c_, 1, 1)
-        self.m = nn.ModuleList([nn.MaxPool2d(kernel_size=x, stride=1, padding=x // 2) for x in k])
-        
-        # Feature Fusion part: Adding an additional fusion step for improved performance
-        self.cv5 = Conv(4 * c_, c_, 1, 1)  # After pooling and concatenation, we use this layer
-        self.cv6 = Conv(c_, c_, 3, 1)
-        
-        # The final convolution layer to match the desired output channels
-        self.cv7 = Conv(2 * c_, c2, 1, 1)
+        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.cv3 = Conv(c_ * 4, c2, 1, 1)  # SPPF 用 3 次池化 + 原特征，通道数为 4*c_
 
-        # Additional convolution for feature fusion
-        self.cv8 = Conv(4 * c_, c_, 1, 1)  # Fusion of all features before final output
-    
     def forward(self, x):
-        # Process through convolutions and pooling
-        x1 = self.cv4(self.cv3(self.cv1(x)))  # First convolution path
-        
-        # Pooling and feature fusion
-        pooled_features = torch.cat([x1] + [m(x1) for m in self.m], 1)
-        y1 = self.cv6(self.cv5(pooled_features))
-        
-        # The additional fusion layer for better feature integration
-        y1_fused = self.cv8(torch.cat([x1, y1], 1))  # Fusion of original and pooled features
-        
-        # Final fusion and output
-        y2 = self.cv2(x)  # Skip connection from input
-        return self.cv7(torch.cat((y1_fused, y2), dim=1))  # Combine and output
+        x1 = self.cv1(x)
+        x2 = self.cv2(x)
+        y1 = x1
+        y2 = self.m(y1)
+        y3 = self.m(y2)
+        y4 = self.m(y3)
+        return self.cv3(torch.cat([y1, y2, y3, y4], dim=1)) + x2
 
         
 class GhostSPPCSPC(SPPCSPC):
@@ -2055,3 +2037,50 @@ class ST2CSPC(nn.Module):
         return self.cv4(torch.cat((y1, y2), dim=1))
 
 ##### end of swin transformer v2 #####   
+
+
+
+### add CA
+class CoordinateAttention(nn.Module):
+    def __init__(self, in_channels, out_channels, reduction=32):
+        super(CoordinateAttention, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))  # 水平池化
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))  # 垂直池化
+        mid_channels = max(8, in_channels // reduction)
+        
+        self.conv1 = nn.Conv2d(in_channels, mid_channels, kernel_size=1, stride=1, padding=0)
+        self.bn = nn.BatchNorm2d(mid_channels)
+        self.act = nn.ReLU(inplace=True)
+        
+        self.conv_h = nn.Conv2d(mid_channels, out_channels, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mid_channels, out_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        identity = x
+        n, c, h, w = x.size()
+        
+        # 水平和垂直方向池化
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)  # 转置以对齐维度
+        
+        # 拼接并通过卷积
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn(y)
+        y = self.act(y)
+        
+        # 分离水平和垂直注意力
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+        
+        # 生成注意力权重
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+        
+        # 应用注意力
+        out = identity * a_w * a_h
+        return out
+
+# 注册模块以便在 .yaml 中调用
+def CA(*args, **kwargs):
+    return CoordinateAttention(*args, **kwargs)
